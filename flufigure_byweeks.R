@@ -1,0 +1,76 @@
+#r setup, include=F, echo=FALSE, cache=FALSE}
+deps = c("AUCRF","pROC", "vegan", "dplyr", 'knitr', "gridExtra", "grid", "xtable", "devtools", "pgirmess", "knitcitations", "scales", "tidyr", "ggplot2", "Hmisc", "cowplot", "mrgsolve", "magrittr", "cdcfluview");
+for (dep in deps){
+  if (dep %in% installed.packages()[,"Package"] == FALSE){
+    install.packages(as.character(dep), quiet=TRUE);
+  }
+  library(dep, verbose=FALSE, character.only=TRUE)
+}
+
+pi_deaths <- cdcfluview::pi_mortality()
+
+get_season_yr <- function(seasonid){
+  season_yr <- ifelse(seasonid == "49", "2009-10", 
+                      ifelse(seasonid == "50", "2010-11", 
+                             ifelse(seasonid == "51", "2011-12", 
+                                    ifelse(seasonid == "52", "2012-13", 
+                                           ifelse(seasonid == "53", "2013-14" , 
+                                                  ifelse(seasonid == "54", "2014-15", 
+                                                         ifelse(seasonid == "55", "2015-16", 
+                                                                ifelse(seasonid == "56", "2016-17", "2017-18"))))))))
+  return(season_yr)
+}
+
+
+pi_deaths$season <- get_season_yr(pi_deaths$seasonid)
+#pi_deaths$year <- as.integer(gsub("(\\d+)-(\\d+)-(\\d+)", "\\1", pi_deaths$wk_start))
+pi_deaths$season_wk <- as.factor(paste(pi_deaths$season,pi_deaths$year_wk_num, sep="_"))
+
+x <- c("2013-14_40", "2013-14_42")
+gsub("(\\d+)-(\\d+)_\\d+", "\\1", x), gsub("(\\d)(\\d)(\\d)(\\d)\\-(\\d+)_\\d+", "\\1\\2\\5", x))
+
+
+pi_deaths$year <- ifelse(pi_deaths$year_wk_num>=40, gsub("(\\d+)-(\\d+)_\\d+", "\\1", pi_deaths$season_wk), gsub("(\\d)(\\d)(\\d)(\\d)\\-(\\d+)_\\d+", "\\1\\2\\5", pi_deaths$season_wk))
+
+checks <- subset(pi_deaths, select=c("season","seasonid", "year", "year_wk_num","wk_start","wk_end"))
+pi_deaths$year_wk <- paste(pi_deaths$year,pi_deaths$year_wk_num, sep="_")
+pi_deaths_current_utd <- pi_deaths[pi_deaths$year==max(pi_deaths$year),]
+pi_deaths_current_utd <- pi_deaths_current_utd[pi_deaths_current_utd$year_wk_num==max(pi_deaths_current_utd$year_wk_num),]
+pi_deaths_current_utd$season <- "2017-18*"
+pi_deaths <- data.frame(subset(pi_deaths, select=c("year_wk", "season","seasonid", "year", "year_wk_num","wk_start","wk_end", "number_influenza", "number_pneumonia", "all_deaths", "total_pni")))
+
+
+ili_nat <- cdcfluview::ilinet("national")
+ili_nat$season <- ifelse(ili_nat$week<40, paste(ili_nat$year-1,"-", gsub("(\\d)(\\d)(\\d)(\\d)", "\\3\\4", ili_nat$year), sep=""), paste(ili_nat$year,"-", gsub("(\\d)(\\d)(\\d)(\\d)", "\\3\\4", ili_nat$year+1), sep=""))
+ili_nat$year_wk <- paste(ili_nat$year,ili_nat$week, sep="_")
+ili_nat <- data.frame(subset(ili_nat, select=c("year_wk", "season", "week_start", "year", "week", "ilitotal", "total_patients")))
+ili_nat_current_utd <- ili_nat[ili_nat$year==max(ili_nat$year),]
+ili_nat_current_utd <- ili_nat_current_utd[ili_nat_current_utd$week==max(ili_nat_current_utd$week),]
+ili_nat_current_utd$season <- "2017-18*"
+
+ili_pi <- merge(pi_deaths, ili_nat, by="year_wk", all=T)
+ili_pi$season <- ifelse(!is.na(ili_pi$season.x), ili_pi$season.x, ili_pi$season.y)
+
+ili_pi_season <- subset(ili_pi, select=c("season", "week","year_wk", "week_start", "wk_start", "wk_end","ilitotal", "total_patients", "number_influenza", "number_pneumonia", "all_deaths", "total_pni"))
+
+#ili_pi_season[is.na(ili_pi_season)] <- 0
+ili_pi_since09 <- ili_pi_season[ili_pi_season$total_pni>0,]
+
+ili_pi_2008 <- ili_pi_season[ili_pi_season$season=="2008-09",]
+ili_pi_since2008 <- rbind(ili_pi_since09, ili_pi_2008)
+ili_pi_since2008 <- arrange(ili_pi_since2008, season)
+ili_pi_since2008$rateflud <- ili_pi_since2008$number_influenza/ili_pi_since2008$all_deaths*100
+ili_pi_since2008$ratePId <- ili_pi_since2008$total_pni/ili_pi_since2008$all_deaths*100
+ili_pi_since2008$rateILIbytot <- ili_pi_since2008$ilitotal/ili_pi_since2008$total_patients*100
+
+ili_pi_gg <- subset(ili_pi_since2008, select=c("season", "week", "year_wk","rateflud", "ratePId", "rateILIbytot"))
+
+
+
+ili_pi_since2008<-ili_pi_since2008[ili_pi_since2008$year_wk!='2016_52' & ili_pi_since2008$wk_end!="",]
+
+  
+  
+  
+  
+levels(ili_pi_gg$week)<-c(seq(40,53,1), seq(1,39,1))
